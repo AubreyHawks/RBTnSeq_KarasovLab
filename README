@@ -35,9 +35,11 @@ To use:
 
 
 Quality/ sanity check:
-1. Check total number of untrimmed reads with ‘zcat [r1_file] | wc -l’
-2. Check total number of barcodes with ‘zcat [output_file] | wc -l’
-3. Check number of unique barcodes with ‘zcat [output_file] | paste - - - - | cut -f2 | sort | uniq -c | wc –l’ 
+1. Check total number of untrimmed reads 
+2. Check total number of barcodes with 
+3. Check number of unique barcodes with ‘zcat [output_file] | paste - - - - | cut -f2 | sort | uniq -c > [filename.txt]’ 
+   a. wc -l will count lines
+   b. save this file for use in dictionary QC
 4. Input all values in the QC spreadsheet with your strain, seq run and date as the header
 
 
