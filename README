@@ -1,0 +1,183 @@
+﻿Setup
+All necessary programs for the pipeline are installed in a conda environment called ‘rbtnseq’ that should be activated before running any of these scripts: conda activate rbtnseq
+
+
+If you choose to download the scripts and run them locally, you will need to install a few things first. Installing in a conda environment is recommended. 
+
+
+Programs that should be installed prior to use:
+1. cutadapt (conda install -c bioconda cutadapt)
+2. samtools (conda install -c bioconda samtools)
+3. bedtools (conda install -c bioconda bedtools)
+4. bwa (conda install -c bioconda bwa)
+5. biopython (conda install -c anaconda biopython)
+
+
+Trim insertion reads - adapt_trim1.sh
+This script will:
+1. Trim insertion reads to barcodes in two steps:
+   1. Trim to a 30 bp sequence - the barcode and 5 bp flanking on either end
+   2. Use linked adapters to trim the 5 bp flanking on each end, leaving the 20 bp barcode
+2. Filter out reads that fail trimming and send them to an output file
+
+
+Outputs you will use:
+1. Trimmed barcode file with associated read names
+
+
+Inputs you will need:
+1. Untrimmed r1 insertion reads file
+
+
+To use:
+1. Edit input and output file names 
+2. Recommended that you do not run this interactively (submit a job on the cluster)
+
+
+Quality/ sanity check:
+1. Check total number of untrimmed reads with ‘zcat [r1_file] | wc -l’
+2. Check total number of barcodes with ‘zcat [output_file] | wc -l’
+3. Check number of unique barcodes with ‘zcat [output_file] | paste - - - - | cut -f2 | sort | uniq -c | wc –l’ 
+4. Input all values in the QC spreadsheet with your strain, seq run and date as the header
+
+
+Insertion processing - insertion_processing.sh 
+This script will:
+1.       Iterate over the r2 files for the insertion reads
+2.       Call the indexed reference genome
+3.       Map the positions of the insertions based on the r2 reads in the ref genome 
+4.       Convert the sam file to a bam file (samtools view)
+5.       Sort the reads in the bam file (samtools sort) and index them (samtools index)
+6.       Associate positions with specific genes (look for appropriate bedtools function)
+
+
+Outputs you will use:
+1.  A sam file for each of the libraries that contains the read ID and the position of the insertion
+2.  A bedtools output file that associates each position range with a gene
+
+
+Inputs you will need:
+1. The path to your insertion file
+2. An indexed reference genome for your library strain
+3. The gff annotation file for your reference genome
+
+
+To use:
+1. Edit lines for inputs in insertion_processing.py
+2. Run the script using “sbatch run_ins_processing.sh”
+   1. Alter job parameters in ‘run_ins_processing.sh’  as needed for sufficient memory allocation, output filenames, etc. 
+
+
+Make dictionaries - mk_tnseq_cpk_dicts.py
+This script will:
+1. Make pickled dictionaries to use for counting barcodes
+
+
+Outputs you will use:
+1. Pickled dictionaries with:
+   1. Each gene in the genome to an empty counter (‘[ ]_gc_dict.cpk’)
+   2. Each gene to the gff description line (‘[ ]_id_gff.cpk’)
+   3. Each barcode associated with the gene ID (‘[ ]_pos_to_gene.cpk’)
+
+
+Inputs you will need:
+1. A string you will use to name your output dictionaries
+2. Trimmed barcode file from r1
+3. The .sam file from the insertion processing
+4. The annotation gff for your strain of interest
+
+
+To use:
+1. Edit lines for inputs in insertion_processing.py
+2. Run the script using “sbatch run_dict_maker.sh”
+   1. Alter job parameters in ‘run_run_dict_maker.sh’  as needed for sufficient memory allocation, output filenames, etc. 
+
+
+Quality/ sanity check:
+1. Use ‘check_cpk_dicts.py’ or ‘mk_dict_df’ to make a readable version of the barcode to gene ID dictionary and verify that the dictionary agrees with the sequencing reads
+   1. Choose a few barcodes to manually check 
+   2. Grep the barcodes in the r1 file (zgrep [filename.fq.gz] [barcode])
+   3. Pull the read ID
+   4. Find the read ID in the r2 file
+   5. Blast the r2 read against the strain genome and assess that the result matches the gene listed in the dictionary
+2. Assess genome coverage
+   1. Make a file with unique barcode reads
+      1. zcat [trimmed_barcode_file] | paste - - - - | cut -f2 | sort | uniq -c > [filename.txt]
+   2. Use exp_bcs_to_gff.py to count barcodes and make a counts.gff file
+   3. Check the counts gff in R and record metrics in the QC spreadsheet:
+      1. Total number of reads mapped to mid 80% of the gene - this will be the sum of the counts column
+      2. Genes with counts greater than 0 - can subset the table by genes with 0 count and confirm that most are likely essential genes
+         1. Record the number of predicted essential genes
+         2. Subtract from the total number of genes in the genome to determine number of genes with at least one mapped read
+      3. Mean insertions per gene (mean of the counts column)
+      4. Check correlation between gene length and number of associated insertions (gene start and end are in the gff for calculating length)
+         1. Record r2 
+
+
+Demultiplexing and trimming experimental barcodes - seq_demultiplex_cutadapt.sh
+This script will:
+1. Take partially demultiplexed barcode read files and demultiplex completely using the p1 index barcode
+2. Name demultiplexed files based on sample IDs
+
+
+Outputs you will use:
+1. Demultiplexed barcode read files named according to the sample ID- send these to a directory of their own
+2. A text file listing demultiplexed files along with a count of the total number of trimmed reads
+
+
+Inputs you will need:
+1. The path to the directory with the partially demultiplexed sequencing reads
+2. A single p2 directory name
+3. A tab separated file called index.txt with a list of all the p1 index barcodes and the names of the samples that will be associated with that p1 paired with the current p2 
+4. A string that can be used to identify sequencing read files
+5. An output text file name (this will not be changed between runs and will count for all your samples
+
+
+To use:
+1. Edit lines for inputs in “seq_demultiplex_cutadapt.sh”
+2. Run the script using “sbatch run_demultiplex.sh”
+   1. Alter job parameters in “run_demultiplex.sh”  as needed for sufficient memory allocation, output filenames, etc. 
+
+
+Quality/ sanity check:
+1. Look at the output file with barcode counts 
+   1. Check against sample sheets to see if low counts correspond to controls
+
+
+Mapping and counting experimental barcodes -  exp_bcs_to_gff.py
+This script will:
+1. Count the barcodes from each experimental sample
+
+
+Outputs you will use:
+1. A gff file with the gene ID and description followed by counts for each sample
+
+
+Inputs you will need:
+1. The exact string you used to name your pickled dictionaries in “mk_tnseq_cpk_dicts.py”
+2. A list of all the trimmed barcode files
+   1. An easy way to make this is to use “ls” on the directory with all the files and > it to a .txt file - make sure there are no other files in this directory
+3. The full file path to the directory with the trimmed barcode files
+
+
+To use:
+1. Edit lines for inputs in “exp_bcs_to_gff.py”
+2. Run using “python exp_bcs_to_gff.py > [filename.gff]
+
+
+Make a table of barcodes to insertion sites- check_cpk_dicts.py
+
+
+check_cpk_dicts.py
+This script will:
+1. Make a csv with a barcode in the first column and the associated gene ID in the second
+
+
+Inputs you will need:
+1. The path to your “_pos_to_gene.cpk” dictionary
+2. A name for your output .csv file
+
+
+To use:
+1. Edit lines for inputs in “check_cpk_dicts.py”
+2. Run using “python check_cpk_dicts.py
